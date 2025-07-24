@@ -96,9 +96,15 @@ namespace webii.http
                 }
             }
             //Console.WriteLine("[HEADERS] Request headers:");
-            foreach (var header in headers)
+            string requestBody = "";
+            if ((REQParts[0] == "POST" || REQParts[0] == "PUT") &&
+                headers.TryGetValue("Content-Length", out string contentLengthStr) &&
+                int.TryParse(contentLengthStr, out int contentLength))
             {
-                //Console.WriteLine($"[HEADER] {header.Key}: {header.Value}");
+                char[] bodyBuffer = new char[contentLength];
+                await reader.ReadAsync(bodyBuffer, 0, contentLength);
+                requestBody = new string(bodyBuffer);
+                headers["RequestBody"] = requestBody; // Dodaj ciało do headers
             }
             string GetOrSmth = REQParts[1];
             //Console.WriteLine($"[REQ] Method: {REQParts[0]}, Path: {GetOrSmth}, Version: {REQParts[2]}");
@@ -133,6 +139,8 @@ namespace webii.http
                 }, "<h1>500 Internal Server Error</h1> <p>Webii</p>");
                 var responseBytes = Encoding.UTF8.GetBytes(response.TextResponse);
                 await stream.WriteAsync(responseBytes);
+                response.Dispose();
+                response = null;
 
             }
             client.Close();
@@ -178,10 +186,18 @@ namespace webii.http
                     {
                         Extension = ".html";
                     }
+                    Console.BackgroundColor = ConsoleColor.Blue;
                     Console.WriteLine("DD  " + fullPath);
                     Console.WriteLine("DD  " + Extension);
-                    fullPath = fullPath.Replace(Extension, "").Replace("/", "");
+                    Console.BackgroundColor = ConsoleColor.Black;
 
+                    string aaa = "\\";
+                    Console.WriteLine(aaa);
+                    fullPath = fullPath.Replace(Extension, "").Replace("/", "/").Replace(aaa, "/");
+                    Console.BackgroundColor = ConsoleColor.Blue;
+                    Console.WriteLine("DD  " + fullPath);
+                    Console.WriteLine("DD  " + Extension);
+                    Console.BackgroundColor = ConsoleColor.Black;
                     List<string> languages = LanguageSelected
                     .Split(',')
                     .Select(part =>
@@ -227,7 +243,7 @@ namespace webii.http
 
                     if (!File.Exists(fullPath))
                     {
-                        //Console.WriteLine($"[REQ/] File not found: {fullPath}");
+                        Console.WriteLine($"[REQ/] File not found: {fullPath}");
                         // If file does not exist, try without extension
                         return HttpResponse.CreateTextResponse("404 Not Found", new Dictionary<string, string>
                         {
@@ -255,7 +271,12 @@ namespace webii.http
                     }, Return404());
 
                 case REQType.POST:
-                    break;
+                    return HandlePostRequest(path, headers);
+                case REQType.PUT:
+                    return HandlePutRequest(path, headers);
+                case REQType.OPTIONS:
+                    return HandleOptionsRequest(path, headers);
+
                 default:
                     break;
             }
@@ -267,7 +288,21 @@ namespace webii.http
             }, "<h1>500 Internal Server Error</h1> <p>Webii</p>");
 
         }
+        private HttpResponse HandleOptionsRequest(string path, Dictionary<string, string> headers)
+        {
+            var corsHeaders = new Dictionary<string, string>
+            {
+                ["Access-Control-Allow-Origin"] = "*",
+                ["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS",
+                ["Access-Control-Allow-Headers"] = "Content-Type, Authorization",
+                ["Access-Control-Max-Age"] = "86400",
+                ["Connection"] = "close",
+                ["Content-Length"] = "0",
+                ["Server"] = "Webii/" + WebServer.VersionNumber
+            };
 
+            return HttpResponse.CreateTextResponse("200 OK", corsHeaders, "");
+        }
         HttpResponse ReturnPageByPath(string path, Dictionary<string, string> requestHeaders = null)
         {
             if (File.Exists(path))
@@ -283,17 +318,42 @@ namespace webii.http
                     _ => "application/octet-stream" // Domyślny typ dla nieznanych plików
                 };
 
-                if (contentType.StartsWith("image/")) // Obsługa obrazów
+                if (contentType.StartsWith("image/"))
                 {
-                    // Pobierz dane z cache (FileRam automatycznie sprawdzi czy plik się zmienił)
-                    byte[] imageData = server.FileRam.GetBytes(path);
-                    if (imageData != null)
+                    try
                     {
-                        // Get file metadata for caching headers
+                        // Dodaj retry mechanism dla obrazków
+                        byte[] imageData = null;
+                        int retryCount = 3;
+
+                        while (retryCount > 0 && imageData == null)
+                        {
+                            imageData = server.FileRam.GetBytes(path);
+                            if (imageData == null)
+                            {
+                                Console.WriteLine($"[WARN] Failed to load image data, retrying... ({retryCount} attempts left)");
+                                Thread.Sleep(10); // Krótka pauza przed ponowną próbą
+                                retryCount--;
+                            }
+                        }
+
+                        if (imageData == null)
+                        {
+                            Console.WriteLine($"[ERR] Failed to load image after retries: {path}");
+                            return null;
+                        }
+
+                        // Sprawdź czy dane są prawidłowe
+                        if (imageData.Length == 0)
+                        {
+                            Console.WriteLine($"[ERR] Empty image file: {path}");
+                            return null;
+                        }
+
                         var lastModified = server.FileRam.GetLastModified(path);
                         var etag = server.FileRam.GetETag(path);
 
-                        // Check if client has cached version (optional optimization)
+                        // Sprawdź cache klienta
                         if (requestHeaders != null && IsNotModified(requestHeaders, lastModified, etag))
                         {
                             var notModifiedHeaders = new Dictionary<string, string>
@@ -317,8 +377,8 @@ namespace webii.http
                             ["Content-Length"] = imageData.Length.ToString(),
                             ["Connection"] = "close",
                             ["Server"] = "Webii/" + WebServer.VersionNumber,
-                            ["Cache-Control"] = "public, max-age=0, must-revalidate", // Wymusza sprawdzenie z serwerem
-                            ["Vary"] = "If-None-Match, If-Modified-Since" // Informuje o nagłówkach używanych do cache'owania
+                            ["Cache-Control"] = "public, max-age=3600", // Cache na 1 godzinę
+                            ["Accept-Ranges"] = "bytes"
                         };
 
                         if (etag != null)
@@ -327,9 +387,16 @@ namespace webii.http
                         if (lastModified.HasValue)
                             responseHeaders["Last-Modified"] = lastModified.Value.ToString("R");
 
+                        Console.WriteLine($"[IMG] Serving image: {path} ({imageData.Length} bytes)");
                         return HttpResponse.CreateBinaryResponse("200 OK", responseHeaders, imageData);
                     }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[ERR] Error serving image {path}: {ex.Message}");
+                        return null;
+                    }
                 }
+
                 else if (contentType == "text/html")
                 {
                     // ZMIANA: Pobierz zawartość PRZED sprawdzeniem cache'a
@@ -441,7 +508,106 @@ namespace webii.http
         }
 
 
+        private HttpResponse HandlePostRequest(string path, Dictionary<string, string> headers)
+        {
+            string requestBody = headers.ContainsKey("RequestBody") ? headers["RequestBody"] : "";
 
+            // Dodaj nagłówki CORS do każdej odpowiedzi POST
+            var corsHeaders = new Dictionary<string, string>
+            {
+                ["Access-Control-Allow-Origin"] = "*",
+                ["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS",
+                ["Access-Control-Allow-Headers"] = "Content-Type, Authorization",
+                ["Content-Type"] = "application/json",
+                ["Connection"] = "close",
+                ["Server"] = "Webii/" + WebServer.VersionNumber
+            };
+
+            if (server.PostHandlers.ContainsKey(path))
+            {
+                try
+                {
+                    var response = server.PostHandlers[path](requestBody, headers);
+
+                    // Dodaj nagłówki CORS do istniejącej odpowiedzi
+                    if (response.IsBinary)
+                    {
+                        // Dla odpowiedzi binarnych, dodaj nagłówki CORS do HeaderBytes
+                        var headerString = Encoding.UTF8.GetString(response.HeaderBytes);
+                        foreach (var header in corsHeaders)
+                        {
+                            if (!headerString.Contains(header.Key))
+                            {
+                                headerString = headerString.Replace("\r\n\r\n", $"\r\n{header.Key}: {header.Value}\r\n\r\n");
+                            }
+                        }
+                        response.HeaderBytes = Encoding.UTF8.GetBytes(headerString);
+                    }
+                    else
+                    {
+                        // Dla odpowiedzi tekstowych, dodaj nagłówki CORS
+                        var lines = response.TextResponse.Split('\n');
+                        var headerEndIndex = Array.FindIndex(lines, line => string.IsNullOrWhiteSpace(line));
+
+                        if (headerEndIndex > 0)
+                        {
+                            var headerLines = new List<string>(lines.Take(headerEndIndex));
+                            foreach (var header in corsHeaders)
+                            {
+                                if (!headerLines.Any(line => line.StartsWith(header.Key + ":")))
+                                {
+                                    headerLines.Add($"{header.Key}: {header.Value}");
+                                }
+                            }
+                            headerLines.Add(""); // Pusta linia oddzielająca nagłówki od body
+                            headerLines.AddRange(lines.Skip(headerEndIndex + 1));
+                            response.TextResponse = string.Join("\n", headerLines);
+                        }
+                    }
+
+                    return response;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[ERR] Error in POST handler for {path}: {ex.Message}");
+                    return HttpResponse.CreateTextResponse("500 Internal Server Error", corsHeaders,
+                        "{\"error\":\"Internal server error\"}");
+                }
+            }
+
+            return HttpResponse.CreateTextResponse("404 Not Found", corsHeaders,
+                "{\"error\":\"Endpoint not found\"}");
+        }
+
+        private HttpResponse HandlePutRequest(string path, Dictionary<string, string> headers)
+        {
+            string requestBody = headers.ContainsKey("RequestBody") ? headers["RequestBody"] : "";
+
+            if (server.PutHandlers.ContainsKey(path))
+            {
+                return server.PutHandlers[path](requestBody, headers);
+            }
+
+            return HttpResponse.CreateTextResponse("404 Not Found", new Dictionary<string, string>
+            {
+                ["Content-Type"] = "text/html; charset=UTF-8",
+                ["Connection"] = "close",
+                ["Server"] = "Webii/" + WebServer.VersionNumber
+            }, Return404());
+        }
+
+        private string ReadRequestBody(Dictionary<string, string> headers)
+        {
+            // Implementacja odczytu ciała żądania na podstawie Content-Length
+            if (headers.TryGetValue("Content-Length", out string contentLengthStr) &&
+                int.TryParse(contentLengthStr, out int contentLength))
+            {
+                // Tu musisz dodać logikę odczytu ciała żądania z stream
+                // To wymaga rozszerzenia metody HandleClient
+                return ""; // Placeholder
+            }
+            return "";
+        }
 
 
         public void Set404Page(string path)

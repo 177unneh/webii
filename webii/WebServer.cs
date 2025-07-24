@@ -5,6 +5,7 @@ using System.Net;
 using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
+using webii.http;
 
 namespace webii
 {
@@ -18,6 +19,7 @@ namespace webii
             GET,
             POST,
             PUT,
+            OPTIONS
         }
         public FileRam FileRam = new FileRam();
         public string RootDirectory;
@@ -96,5 +98,30 @@ namespace webii
             handler.Start();
         }
 
+
+        public Dictionary<string, Func<string, Dictionary<string, string>, HttpResponse>> PostHandlers = new();
+        public Dictionary<string, Func<string, Dictionary<string, string>, HttpResponse>> PutHandlers = new();
+
+        // Istniejące metody...
+
+        public void Post(string path, Func<string, Dictionary<string, string>, HttpResponse> handler)
+        {
+            PostHandlers[path] = handler;
+        }
+
+        public void Put(string path, Func<string, Dictionary<string, string>, HttpResponse> handler)
+        {
+            PutHandlers[path] = handler;
+        }
+        public WebServerPath Post(string path)
+        {
+            return new WebServerPath(this, path, "POST");
+        }
+
+        public WebServerPath Put(string path)
+        {
+            return new WebServerPath(this, path, "PUT");
+        }
     }
 }
+

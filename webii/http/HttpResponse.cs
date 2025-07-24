@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace webii.http
 {
-    internal class HttpResponse : IDisposable
+    public class HttpResponse : IDisposable
     {
         public bool IsBinary { get; set; }
         public byte[] HeaderBytes { get; set; }
