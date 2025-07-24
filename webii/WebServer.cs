@@ -16,7 +16,8 @@ namespace webii
         Iwwwhandler? handler;
         public enum REQType{
             GET,
-            POST
+            POST,
+            PUT,
         }
         public FileRam FileRam = new FileRam();
         public string RootDirectory;

@@ -119,14 +119,23 @@ namespace webii.http
                 }
                 response.Dispose();
                 response = null;
-                client.Close();
 
             }
             catch (Exception ea)
             {
                 Console.WriteLine("ERR" + ea);
                 //throw;
+                HttpResponse response = HttpResponse.CreateTextResponse("500 Internal Server Error", new Dictionary<string, string>
+                {
+                    ["Content-Type"] = "text/html; charset=UTF-8",
+                    ["Connection"] = "close",
+                    ["Server"] = "Webii/1.0"
+                }, "<h1>500 Internal Server Error</h1> <p>Webii</p>");
+                var responseBytes = Encoding.UTF8.GetBytes(response.TextResponse);
+                await stream.WriteAsync(responseBytes);
+
             }
+            client.Close();
 
         }
         HttpResponse RequestType(REQType type, string path, Dictionary<string, string> headers)
@@ -165,6 +174,12 @@ namespace webii.http
                         // Jeśli nie ma rozszerzenia, dodaj domyślne rozszerzenie
                         fullPath += ".html";
                     }
+                    if(string.IsNullOrEmpty(Extension))
+                    {
+                        Extension = ".html";
+                    }
+                    Console.WriteLine("DD  " + fullPath);
+                    Console.WriteLine("DD  " + Extension);
                     fullPath = fullPath.Replace(Extension, "").Replace("/", "");
 
                     List<string> languages = LanguageSelected
@@ -249,7 +264,8 @@ namespace webii.http
                 ["Content-Type"] = "text/html; charset=UTF-8",
                 ["Connection"] = "close",
                 ["Server"] = "Webii/1.0"
-            }, "<h1>500 Internal Server Error</h1>");
+            }, "<h1>500 Internal Server Error</h1> <p>Webii</p>");
+
         }
 
         HttpResponse ReturnPageByPath(string path, Dictionary<string, string> requestHeaders = null)
