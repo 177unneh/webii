@@ -70,7 +70,6 @@ namespace webii.http
         {
             using NetworkStream stream = client.GetStream();
             using StreamReader reader = new StreamReader(stream, Encoding.UTF8);
-            using StreamWriter writer = new StreamWriter(stream, Encoding.UTF8) { AutoFlush = true };
 
             string requestLine = await reader.ReadLineAsync();
             if (string.IsNullOrEmpty(requestLine))
@@ -78,8 +77,8 @@ namespace webii.http
 
             Console.WriteLine($"[REQ] {requestLine}");
 
-            string[] REQParts = requestLine.Split(' ',3);
-            if (REQParts.Length < 3 || REQParts[0] != "GET")
+            string[] REQParts = requestLine.Split(' ', 3);
+            if (REQParts.Length < 3)
             {
                 // Obsługa nieprawidłowego żądania
                 Console.WriteLine("[ERR] Invalid request method or format.");
@@ -90,7 +89,6 @@ namespace webii.http
             Dictionary<string, string> headers = new Dictionary<string, string>();
             while (!string.IsNullOrEmpty(headerLine = await reader.ReadLineAsync()))
             {
-                //Console.WriteLine($"[HEADER] {headerLine}");
                 var headerParts = headerLine.Split(new[] { ':' }, 2);
                 if (headerParts.Length == 2)
                 {
@@ -98,29 +96,35 @@ namespace webii.http
                 }
             }
 
-            // Przykład: Wypisanie User-Agent
-            if (headers.TryGetValue("User-Agent", out string userAgent))
+            string GetOrSmth = REQParts[1];
+            Console.WriteLine($"[REQ] Method: {REQParts[0]}, Path: {GetOrSmth}, Version: {REQParts[2]}");
+
+            var response = RequestType(Enum.TryParse(REQParts[0], out REQType type) ? type : REQType.GET, REQParts[1], headers);
+
+            // Sprawdź czy odpowiedź zawiera dane binarne
+            if (response.IsBinary)
             {
-                //Console.WriteLine($"[INFO] User-Agent: {userAgent}");
+                await stream.WriteAsync(response.HeaderBytes);
+                await stream.WriteAsync(response.Body);
+            }
+            else
+            {
+                var responseBytes = Encoding.UTF8.GetBytes(response.TextResponse);
+                await stream.WriteAsync(responseBytes);
             }
 
-            string GetOrSmth = REQParts[1];
-            Console.WriteLine($"[REQ] Method: {REQParts[0]}, Path: {GetOrSmth}, Version: {REQParts[2]} aaa ");
-            string Rensponce = RequestType(Enum.TryParse(REQParts[0], out REQType type) ? type : REQType.GET, REQParts[1], headers);
-
-            await writer.WriteAsync(Rensponce);
             client.Close();
         }
-        string RequestType(REQType type, string path, Dictionary<string, string> headers)
+        HttpResponse RequestType(REQType type, string path, Dictionary<string, string> headers)
         {
             string LanguageSelected = headers.TryGetValue("Accept-Language", out string acceptLanguage)
-     ? acceptLanguage
-     : "Not specified";
+             ? acceptLanguage
+             : "";
             switch (type)
             {
 
                 case REQType.GET:
-                    Console.WriteLine("[REQ] GET request received. "+ path);
+                    Console.WriteLine("[REQ] GET request received. " + path);
 
                     string fullPath = "";
 
@@ -132,9 +136,9 @@ namespace webii.http
                     {
                         fullPath = Path.Combine(server.publicDirectory, path.TrimStart('/'));
                     }
-                    Console.WriteLine($"[REQ] Full path resolved to: "+ LanguageSelected);
+                    Console.WriteLine($"[REQ] Full path resolved to: " + LanguageSelected);
 
-                    string Extension = Path.GetExtension(fullPath).ToLower();   
+                    string Extension = Path.GetExtension(fullPath).ToLower();
                     if (string.IsNullOrEmpty(Extension))
                     {
                         // Jeśli nie ma rozszerzenia, dodaj domyślne rozszerzenie
@@ -159,34 +163,31 @@ namespace webii.http
                     string folder = Path.GetDirectoryName(fullPath);
 
                     bool Translate = true;
-                    if (File.Exists(Path.Combine(folder,".NoTranslate")))
+                    if (File.Exists(Path.Combine(folder, ".NoTranslate")))
                     {
                         Translate = false;
                     }
 
-                    if(Translate == true)
+                    if (Translate == true)
                     {
                         foreach (var lang in languages)
                         {
                             string preferencelangugage = fullPath + "." + lang + Extension;
 
-                            string LoadedPagePRobally = ReturnPageByPath(preferencelangugage);
+                            HttpResponse LoadedPagePRobally = ReturnPageByPath(preferencelangugage);
                             if (LoadedPagePRobally != null)
                             {
-                                Console.WriteLine($"[REQ] Page found for language: {LoadedPagePRobally}");
-
+                                Console.WriteLine($"[REQ] Page found for language: {preferencelangugage}");
                                 return LoadedPagePRobally;
                             }
                             else
-                                Console.WriteLine($"[REQ] Page not found for language: {LoadedPagePRobally}");
-                            {
-                            }
+                                Console.WriteLine($"[REQ] Page not found for language: {preferencelangugage}");
                         }
                     }
-                   
+
                     // Try without translation
                     fullPath = fullPath + Extension;
-                    string pa = ReturnPageByPath(fullPath);
+                    HttpResponse pa = ReturnPageByPath(fullPath);
                     if (pa != null)
                     {
                         Console.WriteLine($"[REQ] Page found for language: {fullPath}");
@@ -197,23 +198,27 @@ namespace webii.http
                         Console.WriteLine($"[REQ] Page not found : {fullPath}");
                     }
 
-                    return BuildHttpResponse("404 Not Found", new Dictionary<string, string>
+                    return HttpResponse.CreateTextResponse("404 Not Found", new Dictionary<string, string>
                     {
                         ["Content-Type"] = "text/html; charset=UTF-8",
                         ["Connection"] = "close",
                         ["Server"] = "Webii/1.0"
                     }, Return404());
 
-                //break;
                 case REQType.POST:
                     break;
                 default:
                     break;
             }
-            return "";
+            return HttpResponse.CreateTextResponse("500 Internal Server Error", new Dictionary<string, string>
+            {
+                ["Content-Type"] = "text/html; charset=UTF-8",
+                ["Connection"] = "close",
+                ["Server"] = "Webii/1.0"
+            }, "<h1>500 Internal Server Error</h1>");
         }
-       
-        string ReturnPageByPath(string path)
+
+        HttpResponse ReturnPageByPath(string path)
         {
             if (File.Exists(path))
             {
@@ -240,9 +245,10 @@ namespace webii.http
                             ["Server"] = "Webii/1.0"
                         };
 
-                        return BuildHttpResponse("200 OK", responseHeaders, imageData);
+                        return HttpResponse.CreateBinaryResponse("200 OK", responseHeaders, imageData);
                     }
-                } else
+                }
+                else
                 if (contentType == "text/html")
                 {
                     string htmlContent = server.FileRam.GetText(path);
@@ -254,45 +260,21 @@ namespace webii.http
                         ["Server"] = "Webii/1.0"
                     };
 
-                    return BuildHttpResponse("200 OK", responseHeaders, htmlContent);
+                    return HttpResponse.CreateTextResponse("200 OK", responseHeaders, htmlContent);
                 }
-                
+
             }
             else
             {
                 Console.WriteLine($"[ERR] File not found: {path}");
             }
-                return null;
-        }
-        private string BuildHttpResponse(string status, Dictionary<string, string> headers, byte[] body)
-        {
-            var sb = new StringBuilder();
-            sb.AppendLine($"HTTP/1.1 {status}");
-
-            foreach (var header in headers)
-            {
-                sb.AppendLine($"{header.Key}: {header.Value}");
-            }
-
-            sb.AppendLine(); // Pusta linia oddzielająca nagłówki od ciała
-            return sb.ToString() + Encoding.UTF8.GetString(body);
+            return null;
         }
 
-        private string BuildHttpResponse(string status, Dictionary<string, string> headers, string body)
-        {
-            var sb = new StringBuilder();
-            sb.AppendLine($"HTTP/1.1 {status}");
+       
+       
 
-            foreach (var header in headers)
-            {
-                sb.AppendLine($"{header.Key}: {header.Value}");
-            }
-
-            sb.AppendLine(); // Pusta linia oddzielająca nagłówki od ciała
-            sb.Append(body);
-
-            return sb.ToString();
-        }
+        
        
         public void Set404Page(string path)
         {
@@ -319,4 +301,6 @@ namespace webii.http
             }
         }
     }
+
+    
 }
