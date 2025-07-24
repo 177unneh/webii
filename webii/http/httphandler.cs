@@ -135,7 +135,7 @@ namespace webii.http
                 {
                     ["Content-Type"] = "text/html; charset=UTF-8",
                     ["Connection"] = "close",
-                    ["Server"] = "Webii/1.0"
+                    ["Server"] = "Webii/" + WebServer.VersionNumber
                 }, "<h1>500 Internal Server Error</h1> <p>Webii</p>");
                 var responseBytes = Encoding.UTF8.GetBytes(response.TextResponse);
                 await stream.WriteAsync(responseBytes);
@@ -144,6 +144,8 @@ namespace webii.http
 
             }
             client.Close();
+            reader.Dispose();
+            stream.Dispose();
 
         }
         HttpResponse RequestType(REQType type, string path, Dictionary<string, string> headers)
@@ -308,6 +310,7 @@ namespace webii.http
             if (File.Exists(path))
             {
                 string extension = Path.GetExtension(path).ToLower();
+                Console.WriteLine(extension);
                 string contentType = extension switch
                 {
                     ".html" => "text/html",
@@ -315,38 +318,67 @@ namespace webii.http
                     ".jpg" or ".jpeg" => "image/jpeg",
                     ".gif" => "image/gif",
                     ".ico" => "image/x-icon",
+                    ".pdf" => "application/pdf",
+                    ".json" => "application/json",
+                    ".js" => "application/javascript",
+                    ".mp4" => "video/mp4",
+                    ".webm" => "video/webm",
+                    ".ogg" => "video/ogg",
+                    ".avi" => "video/x-msvideo",
+                    ".mpeg" => "video/mpeg",
+                    ".mpg" => "video/mpeg",
+                    ".mov" => "video/quicktime",
+                    ".flv" => "video/x-flv",
+                    ".wmv" => "video/x-ms-wmv",
+                    ".mkv" => "video/x-matroska",
+                    ".webp" => "image/webp",
+                    ".svg" => "image/svg+xml",
+                    ".csv" => "text/csv",
+                    ".mp3" => "audio/mpeg",
+
+                    ".zip" => "application/zip",
+                    ".txt" => "text/plain",
+                    ".xml" => "application/xml",
+                    ".rar" => "application/x-rar-compressed",
+                    ".doc" => "application/msword",
+                    ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    ".xls" => "application/vnd.ms-excel",
+                    ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    ".ppt" => "application/vnd.ms-powerpoint",
+                    ".pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
                     _ => "application/octet-stream" // Domyślny typ dla nieznanych plików
                 };
 
-                if (contentType.StartsWith("image/"))
+                // Zmień warunek aby obsługiwał zarówno obrazy jak i wideo oraz PDF
+                if (contentType.StartsWith("image/") || contentType.StartsWith("video/") || contentType.StartsWith("audio/") || contentType == "application/pdf" || contentType.StartsWith("application"))
                 {
                     try
                     {
-                        // Dodaj retry mechanism dla obrazków
-                        byte[] imageData = null;
+                        // Mechanizm retry dla plików binarnych (obrazy, wideo, PDF)
+                        byte[] fileData = null;
                         int retryCount = 3;
 
-                        while (retryCount > 0 && imageData == null)
+                        while (retryCount > 0 && fileData == null)
                         {
-                            imageData = server.FileRam.GetBytes(path);
-                            if (imageData == null)
+                            fileData = server.FileRam.GetBytes(path);
+                            if (fileData == null)
                             {
-                                Console.WriteLine($"[WARN] Failed to load image data, retrying... ({retryCount} attempts left)");
+                                Console.WriteLine($"[WARN] Failed to load binary data, retrying... ({retryCount} attempts left)");
                                 Thread.Sleep(10); // Krótka pauza przed ponowną próbą
                                 retryCount--;
                             }
                         }
 
-                        if (imageData == null)
+                        if (fileData == null)
                         {
-                            Console.WriteLine($"[ERR] Failed to load image after retries: {path}");
+                            Console.WriteLine($"[ERR] Failed to load file after retries: {path}");
                             return null;
                         }
 
                         // Sprawdź czy dane są prawidłowe
-                        if (imageData.Length == 0)
+                        if (fileData.Length == 0)
                         {
-                            Console.WriteLine($"[ERR] Empty image file: {path}");
+                            Console.WriteLine($"[ERR] Empty file: {path}");
                             return null;
                         }
 
@@ -374,12 +406,17 @@ namespace webii.http
                         var responseHeaders = new Dictionary<string, string>
                         {
                             ["Content-Type"] = contentType,
-                            ["Content-Length"] = imageData.Length.ToString(),
+                            ["Content-Length"] = fileData.Length.ToString(),
                             ["Connection"] = "close",
                             ["Server"] = "Webii/" + WebServer.VersionNumber,
                             ["Cache-Control"] = "public, max-age=3600", // Cache na 1 godzinę
                             ["Accept-Ranges"] = "bytes"
                         };
+
+                        if (contentType.StartsWith("audio/"))
+                        {
+                            responseHeaders["Content-Disposition"] = "inline";
+                        }
 
                         if (etag != null)
                             responseHeaders["ETag"] = etag;
@@ -387,12 +424,17 @@ namespace webii.http
                         if (lastModified.HasValue)
                             responseHeaders["Last-Modified"] = lastModified.Value.ToString("R");
 
-                        Console.WriteLine($"[IMG] Serving image: {path} ({imageData.Length} bytes)");
-                        return HttpResponse.CreateBinaryResponse("200 OK", responseHeaders, imageData);
+                        string fileType = contentType.StartsWith("image/") ? "image" :
+                  (contentType.StartsWith("video/") ? "video" :
+                  (contentType.StartsWith("audio/") ? "audio" : "document"));
+
+
+                        Console.WriteLine($"[BIN] Serving {fileType}: {path} ({fileData.Length} bytes)");
+                        return HttpResponse.CreateBinaryResponse("200 OK", responseHeaders, fileData);
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"[ERR] Error serving image {path}: {ex.Message}");
+                        Console.WriteLine($"[ERR] Error serving file {path}: {ex.Message}");
                         return null;
                     }
                 }
@@ -441,6 +483,16 @@ namespace webii.http
 
                         return HttpResponse.CreateTextResponse("200 OK", responseHeaders, htmlContent);
                     }
+                }
+                else
+                {
+                    Console.WriteLine("#####################" + contentType + "not suppored");
+                    return HttpResponse.CreateTextResponse("415 Unsupported Media Type", new Dictionary<string, string>
+                    {
+                        ["Content-Type"] = "text/html; charset=UTF-8",
+                        ["Connection"] = "close",
+                        ["Server"] = "Webii/"+ WebServer.VersionNumber
+                    }, "<h1>415 Unsupported Media Type</h1> <p>Webii</p>");
                 }
             }
             else

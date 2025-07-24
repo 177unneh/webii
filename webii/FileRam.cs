@@ -1,22 +1,22 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.IO;
 using System.Text;
-using System.Threading.Tasks;
 
 namespace webii
 {
     public class FileRam
     {
-        private readonly Dictionary<string, byte[]> _cache = new();
-        private readonly Dictionary<string, FileSystemWatcher> _watchers = new();
-        private readonly Dictionary<string, DateTime> _lastModified = new();
-        private readonly Dictionary<string, DateTime> _lastAccessed = new();
+        // Używanie pojemności początkowej dla słowników poprawia wydajność przy dużej ilości plików
+        private readonly Dictionary<string, byte[]> _cache = new(64);
+        private readonly Dictionary<string, FileSystemWatcher> _watchers = new(64);
+        private readonly Dictionary<string, DateTime> _lastModified = new(64);
+        private readonly Dictionary<string, DateTime> _lastAccessed = new(64);
         private readonly long _maxCacheBytes;
         private long _currentCacheBytes;
         private readonly object _lock = new();
 
-        public FileRam(long maxCacheBytes = 1024 * 1024 * 200) // Default to 100 MB
+        public FileRam(long maxCacheBytes = 1024 * 1024) // Default to 100 MB
         {
             _maxCacheBytes = maxCacheBytes;
             _currentCacheBytes = 0;
@@ -24,6 +24,7 @@ namespace webii
 
         public byte[]? GetBytes(string path)
         {
+            Console.WriteLine($"[CACHE] GetBytes called for: {path}");
             lock (_lock)
             {
                 if (_cache.TryGetValue(path, out var data))
@@ -37,15 +38,15 @@ namespace webii
 
                 var bytes = File.ReadAllBytes(path);
                 var bytesLength = bytes.Length;
-                
+
                 // Ensure we have space for the new file
                 EnsureCacheSpace(bytesLength);
-                
+
                 _cache[path] = bytes;
                 _lastModified[path] = File.GetLastWriteTimeUtc(path);
                 _lastAccessed[path] = DateTime.UtcNow;
                 _currentCacheBytes += bytesLength;
-
+                Console.WriteLine($"[CACHE] GetBytes from file: {path} ({bytesLength} bytes), current cache size: {_currentCacheBytes} bytes");
                 SetupWatcher(path);
                 return bytes;
             }
@@ -73,6 +74,7 @@ namespace webii
                 return null;
             }
         }
+
         public string? GetETag(string path)
         {
             var lastModified = GetLastModified(path);
@@ -81,9 +83,8 @@ namespace webii
                 var fileInfo = new FileInfo(path);
                 if (fileInfo.Exists)
                 {
-                    // Generate ETag based on file path, size and last modified time
-                    var etag = $"\"{path.GetHashCode():X}-{fileInfo.Length:X}-{lastModified.Value.Ticks:X}\"";
-                    return etag;
+                    // Używamy stałych formatów dla poprawy wydajności
+                    return $"\"{path.GetHashCode():X8}-{fileInfo.Length:X8}-{lastModified.Value.Ticks:X16}\"";
                 }
             }
             return null;
@@ -112,8 +113,10 @@ namespace webii
                 NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size
             };
 
-            watcher.Changed += (s, e) => Invalidate(path);
-            watcher.Deleted += (s, e) => Invalidate(path);
+            // Używamy jednego handlera dla wszystkich zdarzeń
+            FileSystemEventHandler handler = (s, e) => Invalidate(path);
+            watcher.Changed += handler;
+            watcher.Deleted += handler;
             watcher.Renamed += (s, e) => Invalidate(path);
             watcher.EnableRaisingEvents = true;
 
@@ -138,6 +141,7 @@ namespace webii
 
                 if (_watchers.TryGetValue(path, out var watcher))
                 {
+                    watcher.EnableRaisingEvents = false;
                     watcher.Dispose();
                     _watchers.Remove(path);
                 }
@@ -148,29 +152,46 @@ namespace webii
 
         private void EnsureCacheSpace(long requiredBytes)
         {
+            // Unikamy niepotrzebnej alokacji pamięci i obliczeń, jeśli mamy wystarczająco dużo miejsca
+            if (_currentCacheBytes + requiredBytes <= _maxCacheBytes || _cache.Count == 0)
+                return;
+
+            Console.WriteLine($"[CACHE] Ensuring cache space for: {requiredBytes} bytes");
+
             while (_currentCacheBytes + requiredBytes > _maxCacheBytes && _cache.Count > 0)
             {
-                // Find the least recently accessed item
-                var oldestPath = _lastAccessed
-                    .Where(kv => _cache.ContainsKey(kv.Key))
-                    .OrderBy(kv => kv.Value)
-                    .First()
-                    .Key;
+                // Znajdź najstarszy element bez użycia LINQ
+                DateTime oldestTime = DateTime.MaxValue;
+                string oldestPath = null!;
 
-                Console.WriteLine($"[CACHE] Evicting oldest entry: {oldestPath} (accessed: {_lastAccessed[oldestPath]:R})");
-                
-                // Remove the oldest item
+                foreach (var entry in _lastAccessed)
+                {
+                    if (_cache.ContainsKey(entry.Key) && entry.Value < oldestTime)
+                    {
+                        oldestTime = entry.Value;
+                        oldestPath = entry.Key;
+                    }
+                }
+
+                if (oldestPath == null)
+                    break;
+                Console.BackgroundColor = ConsoleColor.DarkYellow;
+                Console.WriteLine($"[CACHE] Evicting oldest entry: {oldestPath} (accessed: {oldestTime:R})");
+                Console.BackgroundColor = ConsoleColor.Black;
+
+                // Usuń najstarszy element
                 if (_cache.TryGetValue(oldestPath, out var data))
                 {
                     _currentCacheBytes -= data.Length;
                 }
-                
+
                 _cache.Remove(oldestPath);
                 _lastModified.Remove(oldestPath);
                 _lastAccessed.Remove(oldestPath);
-                
+
                 if (_watchers.TryGetValue(oldestPath, out var watcher))
                 {
+                    watcher.EnableRaisingEvents = false;
                     watcher.Dispose();
                     _watchers.Remove(oldestPath);
                 }

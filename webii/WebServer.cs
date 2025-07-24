@@ -21,7 +21,7 @@ namespace webii
             PUT,
             OPTIONS
         }
-        public FileRam FileRam = new FileRam();
+        public FileRam FileRam;
         public string RootDirectory;
         public string publicDirectory;
         private static string _versionNumber;
@@ -40,11 +40,12 @@ namespace webii
         }
 
       
-        public WebServer(IPAddress ip,bool UseHttps = false, int port = 80, string rootDirectory = null)
+        public WebServer(IPAddress ip,bool UseHttps = false, int port = 80, string rootDirectory = null,int mb = 100)
         {
             Http = !UseHttps;
             Port = port;
             Host = ip;
+            FileRam = new FileRam(1024*1024*mb);
             if (Http)
             {
                 handler = new http.httphandler(this);
