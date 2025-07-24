@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace webii.http
 {
-    internal class HttpResponse
+    internal class HttpResponse : IDisposable
     {
         public bool IsBinary { get; set; }
         public byte[] HeaderBytes { get; set; }
@@ -51,6 +51,21 @@ namespace webii.http
                 HeaderBytes = Encoding.UTF8.GetBytes(sb.ToString()),
                 Body = body
             };
+        }
+
+        public void Dispose()
+        {
+            if (HeaderBytes != null)
+            {
+                Array.Clear(HeaderBytes, 0, HeaderBytes.Length);
+                HeaderBytes = null;
+            }
+            if (Body != null)
+            {
+                Array.Clear(Body, 0, Body.Length);
+                Body = null;
+            }
+            TextResponse = null;
         }
     }
 }

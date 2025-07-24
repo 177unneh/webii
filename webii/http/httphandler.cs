@@ -117,15 +117,17 @@ namespace webii.http
                     var responseBytes = Encoding.UTF8.GetBytes(response.TextResponse);
                     await stream.WriteAsync(responseBytes);
                 }
+                response.Dispose();
+                response = null;
+                client.Close();
+
             }
             catch (Exception ea)
             {
                 Console.WriteLine("ERR" + ea);
                 //throw;
             }
-          
 
-            client.Close();
         }
         HttpResponse RequestType(REQType type, string path, Dictionary<string, string> headers)
         {
