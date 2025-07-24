@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -20,6 +21,22 @@ namespace webii
         public FileRam FileRam = new FileRam();
         public string RootDirectory;
         public string publicDirectory;
+        private static string _versionNumber;
+        private string _versionString;
+
+        public static string VersionNumber
+        {
+            get
+            {
+                if (_versionNumber == null)
+                {
+                    _versionNumber = Assembly.GetExecutingAssembly().GetName().Version.ToString();
+                }
+                return _versionNumber;
+            }
+        }
+
+      
         public WebServer(IPAddress ip,bool UseHttps = false, int port = 80, string rootDirectory = null)
         {
             Http = !UseHttps;
