@@ -84,7 +84,7 @@ server.Start();
 
 ```csharp
 // Using the fluent operator overload
-server.Post("/api/login") += (body, headers) =>
+server.Post("/api/login") , (body, headers) =>
 {
     // Handle login logic
     var credentials = JsonSerializer.Deserialize<LoginRequest>(body);
@@ -103,139 +103,7 @@ server.Post("/api/login") += (body, headers) =>
 };
 ```
 
-#### Method 3: Using Handler Method
-
-```csharp
-server.Post("/api/upload")
-    .Handler((body, headers) =>
-    {
-        // Handle file upload
-        var contentType = headers.GetValueOrDefault("Content-Type", "");
-        
-        if (contentType.StartsWith("multipart/form-data"))
-        {
-            // Process file upload
-            SaveUploadedFile(body);
-            
-            return HttpResponse.CreateTextResponse("200 OK",
-                new Dictionary<string, string> { ["Content-Type"] = "application/json" },
-                "{\"message\": \"File uploaded successfully\"}");
-        }
-        
-        return HttpResponse.CreateTextResponse("400 Bad Request",
-            new Dictionary<string, string> { ["Content-Type"] = "application/json" },
-            "{\"error\": \"Invalid content type\"}");
-    });
-```
-
-### 4. Handling PUT Requests
-
-```csharp
-// Update user data
-server.Put("/api/users/123", (body, headers) =>
-{
-    var userData = JsonSerializer.Deserialize<User>(body);
-    
-    // Update user in database
-    UpdateUser(123, userData);
-    
-    return HttpResponse.CreateTextResponse("200 OK",
-        new Dictionary<string, string> { ["Content-Type"] = "application/json" },
-        JsonSerializer.Serialize(userData));
-});
-
-// Using fluent syntax
-server.Put("/api/settings") += (body, headers) =>
-{
-    var settings = JsonSerializer.Deserialize<AppSettings>(body);
-    SaveSettings(settings);
-    
-    return HttpResponse.CreateTextResponse("204 No Content",
-        new Dictionary<string, string>(), "");
-};
-```
-
-### 5. Complete REST API Example
-
-```csharp
-using System.Net;
-using System.Text.Json;
-using webii;
-using webii.http;
-
-var server = new WebServer(IPAddress.Any, false, 3000, @"C:\MyApi");
-
-// CORS headers for all responses
-var corsHeaders = new Dictionary<string, string>
-{
-    ["Access-Control-Allow-Origin"] = "*",
-    ["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS",
-    ["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
-};
-
-// GET all users (served as static JSON file from public/api/users.json)
-// Just place a users.json file in public/api/ directory
-
-// CREATE user
-server.Post("/api/users") += (body, headers) =>
-{
-    try
-    {
-        var user = JsonSerializer.Deserialize<User>(body);
-        user.Id = GenerateNewId();
-        
-        // Save to database/file
-        SaveUser(user);
-        
-        var responseHeaders = new Dictionary<string, string>(corsHeaders)
-        {
-            ["Content-Type"] = "application/json"
-        };
-        
-        return HttpResponse.CreateTextResponse("201 Created", responseHeaders,
-            JsonSerializer.Serialize(user));
-    }
-    catch (Exception ex)
-    {
-        var errorHeaders = new Dictionary<string, string>(corsHeaders)
-        {
-            ["Content-Type"] = "application/json"
-        };
-        
-        return HttpResponse.CreateTextResponse("400 Bad Request", errorHeaders,
-            $"{{\"error\": \"{ex.Message}\"}}");
-    }
-};
-
-// UPDATE user
-server.Put("/api/users") += (body, headers) =>
-{
-    var user = JsonSerializer.Deserialize<User>(body);
-    UpdateUser(user);
-    
-    var responseHeaders = new Dictionary<string, string>(corsHeaders)
-    {
-        ["Content-Type"] = "application/json"
-    };
-    
-    return HttpResponse.CreateTextResponse("200 OK", responseHeaders,
-        JsonSerializer.Serialize(user));
-};
-
-server.Start();
-Console.WriteLine("API Server running on http://localhost:3000");
-Console.ReadLine();
-
-// Helper classes
-public class User
-{
-    public int Id { get; set; }
-    public string Name { get; set; }
-    public string Email { get; set; }
-}
-```
-
-### 6. Custom 404 Page
+### 3. Custom 404 Page
 
 ```csharp
 var server = new WebServer(IPAddress.Any, false, 8080, @"C:\MyWebsite");
@@ -249,7 +117,7 @@ server.Start();
 If nothing is selected, Webii will make page itself.
 
 
-### 7. Multi-language Support
+### 4. Multi-language Support
 
 WebII automatically supports multi-language files based on Accept-Language headers:
 
@@ -267,7 +135,7 @@ public/
 
 The server automatically serves the appropriate language version based on the browser's `Accept-Language` header.
 The language setting is before the extention, so `index.en.html` is served for English requests.
-### 8. File Caching with FileRam
+### 5. File Caching with FileRam
 
 WebII includes an intelligent file caching system:
 
@@ -288,7 +156,7 @@ The FileRam system:
 - Implements LRU cache eviction
 - Supports both text and binary files
 
-### 9. Advanced Configuration
+### 6. Advanced Configuration
 
 ```csharp
 // Custom root directory and port
@@ -317,7 +185,7 @@ HttpResponse HandleLogin(string body, Dictionary<string, string> headers)
 }
 ```
 
-### 10. Binary File Handling
+### 7. Binary File Handling
 
 WebII automatically handles binary files (images, PDFs, etc.):
 
@@ -357,14 +225,39 @@ server.Post("/api/generate-pdf") += (body, headers) =>
 
 WebII automatically detects and serves these content types:
 
-- `.html` → `text/html`
-- `.css` → `text/css` 
-- `.js` → `application/javascript`
-- `.json` → `application/json`
-- `.png` → `image/png`
-- `.jpg/.jpeg` → `image/jpeg`
-- `.gif` → `image/gif`
-- `.ico` → `image/x-icon`
+  ".html" => "text/html",
+  ".png" => "image/png",
+  ".jpg" or ".jpeg" => "image/jpeg",
+  ".gif" => "image/gif",
+  ".ico" => "image/x-icon",
+  ".pdf" => "application/pdf",
+  ".json" => "application/json",
+  ".js" => "application/javascript",
+  ".mp4" => "video/mp4",
+  ".webm" => "video/webm",
+  ".ogg" => "video/ogg",
+  ".avi" => "video/x-msvideo",
+  ".mpeg" => "video/mpeg",
+  ".mpg" => "video/mpeg",
+  ".mov" => "video/quicktime",
+  ".flv" => "video/x-flv",
+  ".wmv" => "video/x-ms-wmv",
+  ".mkv" => "video/x-matroska",
+  ".webp" => "image/webp",
+  ".svg" => "image/svg+xml",
+  ".csv" => "text/csv",
+  ".mp3" => "audio/mpeg",
+
+  ".zip" => "application/zip",
+  ".txt" => "text/plain",
+  ".xml" => "application/xml",
+  ".rar" => "application/x-rar-compressed",
+  ".doc" => "application/msword",
+  ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ".xls" => "application/vnd.ms-excel",
+  ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ".ppt" => "application/vnd.ms-powerpoint",
+  ".pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
 - Others → `application/octet-stream`
 
 ## Performance Features
