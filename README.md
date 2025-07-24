@@ -1,4 +1,5 @@
-﻿# WebII - Lightweight HTTP Server Library for .NET
+﻿<img src="https://github.com/177unneh/webii/blob/master/webii/WebiColor.png?raw=true" height="150" width="150">
+# WebII - Lightweight HTTP Server Library for .NET
 
 WebII is a simple, lightweight HTTP server library for .NET applications that allows you to easily create web servers with static file serving, POST/PUT request handling, and file caching capabilities.
 
