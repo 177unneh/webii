@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
@@ -9,7 +10,7 @@ using webii.http;
 
 namespace webii
 {
-    public class WebServer
+    public class WebServer : IDisposable
     {
         public bool Http;
         public int Port;
@@ -122,6 +123,21 @@ namespace webii
         public WebServerPath Put(string path)
         {
             return new WebServerPath(this, path, "PUT");
+        }
+
+        public void Dispose()
+        {
+            //handler.Stop();
+            if(handler != null)
+            {
+                handler.Dispose();
+            }
+            handler = null;
+            PostHandlers.Clear();
+            PutHandlers.Clear();
+            PostHandlers = null;
+            PutHandlers = null;
+            FileRam.Dispose(); 
         }
     }
 }

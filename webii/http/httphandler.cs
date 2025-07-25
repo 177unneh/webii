@@ -16,9 +16,12 @@ namespace webii.http
         TcpListener listener;
         Thread ListeningThread;
         string page404;
+        private CancellationTokenSource cancellationTokenSource;
+        private bool isRunning = false;
         public httphandler(WebServer server)
         {
             this.server = server;
+            cancellationTokenSource = new CancellationTokenSource();
             listener = new TcpListener(server.Host, server.Port);
             ListeningThread = new Thread(() =>
             {
@@ -28,9 +31,12 @@ namespace webii.http
                 }
                 catch (Exception e)
                 {
-                    Stop();
-                    Console.WriteLine($"[ERR] An error occurred while listening for HTTP requests: {e.Message}");
-                    throw new Exception("An error occurred while listening for HTTP requests so its Stoped!" + e);
+                    if (!cancellationTokenSource.IsCancellationRequested)
+                    {
+                        Console.WriteLine($"[ERR] An error occurred while listening for HTTP requests: {e.Message}");
+                        Stop();
+                        throw new Exception("An error occurred while listening for HTTP requests so its Stopped!" + e);
+                    }
                 }
             });
         }
@@ -45,24 +51,81 @@ namespace webii.http
 
         public void Start()
         {
-            listener.Start();
-            ListeningThread.Start();
-
+            if (!isRunning)
+            {
+                cancellationTokenSource = new CancellationTokenSource();
+                listener.Start();
+                isRunning = true;
+                ListeningThread.Start();
+            }
         }
 
         public void Stop()
         {
-            listener.Stop();
-            ListeningThread.Suspend();
+            if (isRunning)
+            {
+                isRunning = false;
+                cancellationTokenSource.Cancel();
+                listener.Stop();
+                if (ListeningThread != null && ListeningThread.IsAlive)
+                {
+                    if (!ListeningThread.Join(3000))  // Czekamy max 3 sekundy
+                    {
+                        Console.WriteLine("[WARN] Listening thread did not terminate gracefully.");
+                    }
+                }
+            }
         }
 
         async void Listening()
         {
-            while (true)
+            try
             {
-                TcpClient client = await listener.AcceptTcpClientAsync();
-                _ = HandleClient(client);
+                while (!cancellationTokenSource.Token.IsCancellationRequested)
+                {
+                    try
+                    {
+                        TcpClient client = await listener.AcceptTcpClientAsync().ConfigureAwait(false);
+                        if (cancellationTokenSource.Token.IsCancellationRequested)
+                        {
+                            client.Close();
+                            break;
+                        }
 
+                        // Przekazujemy token anulowania do obsługi klienta
+                        _ = HandleClient(client);
+                        
+                    }
+                    catch (ObjectDisposedException)
+                    {
+                        // Normalne zachowanie, gdy listener jest zatrzymywany
+                        break;
+                    }
+                    catch (SocketException ex) when (cancellationTokenSource.Token.IsCancellationRequested)
+                    {
+                        // Ignorujemy błędy socketu podczas zamykania
+                        break;
+                    }
+                    catch (Exception ex)
+                    {
+                        if (!cancellationTokenSource.Token.IsCancellationRequested)
+                        {
+                            Console.WriteLine($"[ERR] Error accepting client: {ex.Message}");
+                        }
+                        break;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                if (!cancellationTokenSource.Token.IsCancellationRequested)
+                {
+                    Console.WriteLine($"[ERR] Error in listening loop: {ex.Message}");
+                }
+            }
+            finally
+            {
+                Console.WriteLine("[INFO] HTTP listener stopped");
             }
         }
 
@@ -94,6 +157,7 @@ namespace webii.http
                 {
                     headers[headerParts[0].Trim()] = headerParts[1].Trim();
                 }
+                headerParts = null;
             }
             //Console.WriteLine("[HEADERS] Request headers:");
             string requestBody = "";
@@ -141,12 +205,16 @@ namespace webii.http
                 await stream.WriteAsync(responseBytes);
                 response.Dispose();
                 response = null;
-
+                ea = null;
             }
             client.Close();
             reader.Dispose();
             stream.Dispose();
-
+            client.Dispose();
+            GetOrSmth = null;
+            requestLine = null;
+            headers.Clear();
+            requestBody = null;
         }
         HttpResponse RequestType(REQType type, string path, Dictionary<string, string> headers)
         {

@@ -1,6 +1,6 @@
 ﻿namespace webii
 {
-    internal interface Iwwwhandler
+    internal interface Iwwwhandler : IDisposable
     {
         public void Start();
         public void Stop();

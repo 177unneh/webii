@@ -5,7 +5,7 @@ using System.Text;
 
 namespace webii
 {
-    public class FileRam
+    public class FileRam : IDisposable
     {
         // Używanie pojemności początkowej dla słowników poprawia wydajność przy dużej ilości plików
         private readonly Dictionary<string, byte[]> _cache = new(64);
@@ -196,6 +196,16 @@ namespace webii
                     _watchers.Remove(oldestPath);
                 }
             }
+        }
+
+        public void Dispose()
+        {
+            //throw new NotImplementedException();
+            _cache.Clear();
+            _watchers.Clear();
+            _lastModified.Clear();
+            _lastAccessed.Clear();
+            
         }
     }
 }
