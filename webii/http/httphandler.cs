@@ -230,6 +230,26 @@ namespace webii.http
             {
 
                 case REQType.GET:
+
+                    if (server.GetHandlers.TryGetValue(path, out var handler))
+                    {
+                        try
+                        {
+                            // Wywołaj własny handler
+                            return handler(headers.TryGetValue("RequestBody", out var body) ? body : "", headers);
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"[ERR] Error in GET handler for {path}: {ex.Message}");
+                            return HttpResponse.CreateTextResponse("500 Internal Server Error", new Dictionary<string, string>
+                            {
+                                ["Content-Type"] = "application/json",
+                                ["Access-Control-Allow-Origin"] = "*",
+                                ["Connection"] = "close",
+                                ["Server"] = "Webii/" + WebServer.VersionNumber
+                            }, "{\"error\":\"Internal server error\"}");
+                        }
+                    }
                     string fullPath = "";
                     if (path.EndsWith("/"))
                     {

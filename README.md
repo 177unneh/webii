@@ -102,7 +102,7 @@ server.Post("/api/login") , (body, headers) =>
         "{\"error\": \"Invalid credentials\"}");
 };
 ```
-
+You can do this with GET , PUT and POST
 ### 3. Custom 404 Page
 
 ```csharp
@@ -171,40 +171,41 @@ The FileRam system:
 
 WebII automatically detects and serves these content types:
 
-  ".html" => "text/html",
-  ".png" => "image/png",
-  ".jpg" or ".jpeg" => "image/jpeg",
-  ".gif" => "image/gif",
-  ".ico" => "image/x-icon",
-  ".pdf" => "application/pdf",
-  ".json" => "application/json",
-  ".js" => "application/javascript",
-  ".mp4" => "video/mp4",
-  ".webm" => "video/webm",
-  ".ogg" => "video/ogg",
-  ".avi" => "video/x-msvideo",
-  ".mpeg" => "video/mpeg",
-  ".mpg" => "video/mpeg",
-  ".mov" => "video/quicktime",
-  ".flv" => "video/x-flv",
-  ".wmv" => "video/x-ms-wmv",
-  ".mkv" => "video/x-matroska",
-  ".webp" => "image/webp",
-  ".svg" => "image/svg+xml",
-  ".csv" => "text/csv",
-  ".mp3" => "audio/mpeg",
 
-  ".zip" => "application/zip",
-  ".txt" => "text/plain",
-  ".xml" => "application/xml",
-  ".rar" => "application/x-rar-compressed",
-  ".doc" => "application/msword",
-  ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  ".xls" => "application/vnd.ms-excel",
-  ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  ".ppt" => "application/vnd.ms-powerpoint",
-  ".pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-- Others → `application/octet-stream`
+| Extension      | MIME Type                                                        |
+|--------------- |------------------------------------------------------------------|
+| .html          | text/html                                                        |
+| .png           | image/png                                                        |
+| .jpg, .jpeg    | image/jpeg                                                       |
+| .gif           | image/gif                                                        |
+| .ico           | image/x-icon                                                     |
+| .pdf           | application/pdf                                                  |
+| .json          | application/json                                                 |
+| .js            | application/javascript                                           |
+| .mp4           | video/mp4                                                        |
+| .webm          | video/webm                                                       |
+| .ogg           | video/ogg                                                        |
+| .avi           | video/x-msvideo                                                  |
+| .mpeg, .mpg    | video/mpeg                                                       |
+| .mov           | video/quicktime                                                  |
+| .flv           | video/x-flv                                                      |
+| .wmv           | video/x-ms-wmv                                                   |
+| .mkv           | video/x-matroska                                                 |
+| .webp          | image/webp                                                       |
+| .svg           | image/svg+xml                                                    |
+| .csv           | text/csv                                                         |
+| .mp3           | audio/mpeg                                                       |
+| .zip           | application/zip                                                  |
+| .txt           | text/plain                                                       |
+| .xml           | application/xml                                                  |
+| .rar           | application/x-rar-compressed                                     |
+| .doc           | application/msword                                               |
+| .docx          | application/vnd.openxmlformats-officedocument.wordprocessingml.document |
+| .xls           | application/vnd.ms-excel                                         |
+| .xlsx          | application/vnd.openxmlformats-officedocument.spreadsheetml.sheet |
+| .ppt           | application/vnd.ms-powerpoint                                    |
+| .pptx          | application/vnd.openxmlformats-officedocument.presentationml.presentation |
+| *others*       | application/octet-stream                                         |
 
 ## Performance Features
 

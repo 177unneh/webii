@@ -103,7 +103,17 @@ namespace webii
 
         public Dictionary<string, Func<string, Dictionary<string, string>, HttpResponse>> PostHandlers = new();
         public Dictionary<string, Func<string, Dictionary<string, string>, HttpResponse>> PutHandlers = new();
+        public Dictionary<string, Func<string, Dictionary<string, string>, HttpResponse>> GetHandlers = new();
 
+        public void Get(string path, Func<string, Dictionary<string, string>, HttpResponse> handler)
+        {
+            GetHandlers[path] = handler;
+        }
+
+        public WebServerPath Get(string path)
+        {
+            return new WebServerPath(this, path, "GET");
+        }
         // Istniejące metody...
 
         public void Post(string path, Func<string, Dictionary<string, string>, HttpResponse> handler)
@@ -127,17 +137,18 @@ namespace webii
 
         public void Dispose()
         {
-            //handler.Stop();
-            if(handler != null)
+            if (handler != null)
             {
                 handler.Dispose();
             }
             handler = null;
             PostHandlers.Clear();
             PutHandlers.Clear();
+            GetHandlers.Clear();
             PostHandlers = null;
             PutHandlers = null;
-            FileRam.Dispose(); 
+            GetHandlers = null;
+            FileRam.Dispose();
         }
     }
 }

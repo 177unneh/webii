@@ -21,12 +21,15 @@ namespace webii
         }
 
         // Operator + dla składni z += (kompilator automatycznie utworzy +=)
+        // Operator + dla składni z += (kompilator automatycznie utworzy +=)
         public static WebServerPath operator +(WebServerPath path, Func<string, Dictionary<string, string>, HttpResponse> handler)
         {
             if (path._method == "POST")
                 path._server.PostHandlers[path._path] = handler;
             else if (path._method == "PUT")
                 path._server.PutHandlers[path._path] = handler;
+            else if (path._method == "GET")
+                path._server.GetHandlers[path._path] = handler;
 
             return path;
         }
@@ -38,6 +41,8 @@ namespace webii
                 _server.PostHandlers[_path] = handler;
             else if (_method == "PUT")
                 _server.PutHandlers[_path] = handler;
+            else if (_method == "GET")
+                _server.GetHandlers[_path] = handler;
 
             return this;
         }
