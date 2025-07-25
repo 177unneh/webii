@@ -131,14 +131,14 @@ namespace webii.http
 
         async Task HandleClient(TcpClient client)
         {
+
             using NetworkStream stream = client.GetStream();
-            using StreamReader reader = new StreamReader(stream, Encoding.UTF8);
+            using StreamReader reader = new StreamReader(stream, Encoding.UTF8,false,4096,true);
 
             string requestLine = await reader.ReadLineAsync();
             if (string.IsNullOrEmpty(requestLine))
                 return;
 
-            Console.WriteLine($"[REQ] {requestLine}");
 
             string[] REQParts = requestLine.Split(' ', 3);
             if (REQParts.Length < 3)
@@ -174,21 +174,26 @@ namespace webii.http
             //Console.WriteLine($"[REQ] Method: {REQParts[0]}, Path: {GetOrSmth}, Version: {REQParts[2]}");
             try
             {
-                var response = RequestType(Enum.TryParse(REQParts[0], out REQType type) ? type : REQType.GET, REQParts[1], headers);
+                REQType requestType = Enum.TryParse(REQParts[0], out REQType type) ? type : REQType.GET;
 
-                // Sprawdź czy odpowiedź zawiera dane binarne
-                if (response.IsBinary)
+                var response = RequestType(requestType, REQParts[1], headers);
+
+                using (response)
                 {
-                    await stream.WriteAsync(response.HeaderBytes);
-                    await stream.WriteAsync(response.Body);
+                    if (response.IsBinary)
+                    {
+                        await stream.WriteAsync(response.HeaderBytes);
+                        if (response.Body != null && response.Body.Length > 0)
+                        {
+                            await stream.WriteAsync(response.Body);
+                        }
+                    }
+                    else
+                    {
+                        byte[] responseBytes = Encoding.UTF8.GetBytes(response.TextResponse);
+                        await stream.WriteAsync(responseBytes);
+                    }
                 }
-                else
-                {
-                    var responseBytes = Encoding.UTF8.GetBytes(response.TextResponse);
-                    await stream.WriteAsync(responseBytes);
-                }
-                response.Dispose();
-                response = null;
 
             }
             catch (Exception ea)
@@ -225,27 +230,15 @@ namespace webii.http
             {
 
                 case REQType.GET:
-                    //Console.WriteLine("[REQ] GET request received. " + path);
-
                     string fullPath = "";
-
-                    //if (!path.EndsWith("/"))
-                    //{
-                    //    path = path + "/";
-                    //}
-
                     if (path.EndsWith("/"))
                     {
                         fullPath = Path.Combine(server.publicDirectory, path.TrimStart('/'), "index.html");
                     }
                     else
                     {
-                        //path = path + "/";
-
                         fullPath = Path.Combine(server.publicDirectory, path.TrimStart('/'));
                     }
-                    //Console.WriteLine($"[REQ] Full path resolved to: " + LanguageSelected);
-
                     string Extension = Path.GetExtension(fullPath).ToLower();
                     if (string.IsNullOrEmpty(Extension))
                     {
@@ -256,18 +249,9 @@ namespace webii.http
                     {
                         Extension = ".html";
                     }
-                    Console.BackgroundColor = ConsoleColor.Blue;
-                    Console.WriteLine("DD  " + fullPath);
-                    Console.WriteLine("DD  " + Extension);
-                    Console.BackgroundColor = ConsoleColor.Black;
 
                     string aaa = "\\";
-                    Console.WriteLine(aaa);
                     fullPath = fullPath.Replace(Extension, "").Replace("/", "/").Replace(aaa, "/");
-                    Console.BackgroundColor = ConsoleColor.Blue;
-                    Console.WriteLine("DD  " + fullPath);
-                    Console.WriteLine("DD  " + Extension);
-                    Console.BackgroundColor = ConsoleColor.Black;
                     List<string> languages = LanguageSelected
                     .Split(',')
                     .Select(part =>
@@ -299,22 +283,16 @@ namespace webii.http
                             HttpResponse LoadedPagePRobally = ReturnPageByPath(preferencelangugage, headers);
                             if (LoadedPagePRobally != null)
                             {
-                                //Console.WriteLine($"[REQ] Page found for language: {preferencelangugage}");
                                 return LoadedPagePRobally;
                             }
-                            //else
-                                //Console.WriteLine($"[REQ] Page not found for language: {preferencelangugage}");
                         }
                     }
 
                     // Try without translation
                     fullPath = fullPath + Extension;
-                    Console.WriteLine($"[REQ] Full path resolved to: {fullPath}");
 
                     if (!File.Exists(fullPath))
                     {
-                        Console.WriteLine($"[REQ/] File not found: {fullPath}");
-                        // If file does not exist, try without extension
                         return HttpResponse.CreateTextResponse("404 Not Found", new Dictionary<string, string>
                         {
                             ["Content-Type"] = "text/html; charset=UTF-8",
@@ -330,7 +308,6 @@ namespace webii.http
                     }
                     else
                     {
-                        Console.WriteLine($"[REQ] Page not found : {fullPath}");
                     }
 
                     return HttpResponse.CreateTextResponse("404 Not Found", new Dictionary<string, string>
@@ -378,7 +355,6 @@ namespace webii.http
             if (File.Exists(path))
             {
                 string extension = Path.GetExtension(path).ToLower();
-                Console.WriteLine(extension);
                 string contentType = extension switch
                 {
                     ".html" => "text/html",
@@ -416,9 +392,7 @@ namespace webii.http
                     ".pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
                     _ => "application/octet-stream" // Domyślny typ dla nieznanych plików
                 };
-
-                // Zmień warunek aby obsługiwał zarówno obrazy jak i wideo oraz PDF
-                if (contentType.StartsWith("image/") || contentType.StartsWith("video/") || contentType.StartsWith("audio/") || contentType == "application/pdf" || contentType.StartsWith("application"))
+                if (contentType.StartsWith("image/") || contentType.StartsWith("video/") || contentType.StartsWith("audio/") || contentType.StartsWith("application"))
                 {
                     try
                     {
@@ -497,7 +471,6 @@ namespace webii.http
                   (contentType.StartsWith("audio/") ? "audio" : "document"));
 
 
-                        Console.WriteLine($"[BIN] Serving {fileType}: {path} ({fileData.Length} bytes)");
                         return HttpResponse.CreateBinaryResponse("200 OK", responseHeaders, fileData);
                     }
                     catch (Exception ex)
@@ -565,57 +538,46 @@ namespace webii.http
             }
             else
             {
-                Console.WriteLine($"[ERR] File not found: {path}");
             }
             return null;
         }
 
         private bool IsNotModified(Dictionary<string, string> requestHeaders, DateTime? lastModified, string etag)
         {
-            Console.WriteLine($"[CACHE] Checking cache for file - ETag: {etag}, LastModified: {lastModified:R}");
 
             if (lastModified.HasValue && requestHeaders.TryGetValue("If-Modified-Since", out string ifModifiedSince))
             {
-                Console.WriteLine($"[CACHE] Checking Last-Modified: server={lastModified.Value:R}, client={ifModifiedSince}");
                 if (DateTime.TryParse(ifModifiedSince, out DateTime clientDate))
                 {
                     // Remove milliseconds for comparison (HTTP dates don't include them)
                     var serverDate = new DateTime(lastModified.Value.Ticks - (lastModified.Value.Ticks % TimeSpan.TicksPerSecond));
                     bool isNotModified = serverDate <= clientDate;
-                    Console.WriteLine($"[CACHE] Date comparison: server={serverDate:R}, client={clientDate:R}, isNotModified={isNotModified}");
                     if (isNotModified)
                     {
-                        Console.WriteLine("[CACHE] File not modified - returning 304");
                         return true;
                     }
                     else
                     {
-                        Console.WriteLine($"[CACHE] File was modified - server: {serverDate:R}, client: {clientDate:R}");
                     }
                 }
                 else
                 {
-                    Console.WriteLine($"[CACHE] Failed to parse client date: {ifModifiedSince}");
                 }
             }
             else
             {
-                Console.WriteLine($"[CACHE] No If-Modified-Since header found or no lastModified. Headers: {string.Join(", ", requestHeaders.Keys)}");
             }
 
             // Check If-None-Match header (ETag)
             if (etag != null && requestHeaders.TryGetValue("If-None-Match", out string ifNoneMatch))
             {
-                Console.WriteLine($"[CACHE] Checking ETag: server={etag}, client={ifNoneMatch}");
                 bool etagMatch = ifNoneMatch == etag || ifNoneMatch == "*";
                 if (etagMatch)
                 {
-                    Console.WriteLine("[CACHE] ETag match - returning 304");
                     return true;
                 }
                 else
                 {
-                    Console.WriteLine("[CACHE] ETag mismatch - file changed");
                     return false;
                 }
             }
@@ -623,7 +585,6 @@ namespace webii.http
             // Check If-Modified-Since header
            
 
-            Console.WriteLine("[CACHE] No cache headers or file modified - sending full response");
             return false;
         }
 

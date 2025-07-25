@@ -13,6 +13,10 @@ namespace webii.http
    
         public class HttpResponse : IDisposable
         {
+            public enum StatusType
+            {
+                Sucess200,Notfound404,ServerError500,NotImplemented501, ServiceUnavailable503
+        }
             public bool IsBinary { get; set; }
             public byte[] HeaderBytes { get; set; }
             public byte[] Body { get; set; }

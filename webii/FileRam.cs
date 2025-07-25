@@ -24,7 +24,6 @@ namespace webii
 
         public byte[]? GetBytes(string path)
         {
-            Console.WriteLine($"[CACHE] GetBytes called for: {path}");
             lock (_lock)
             {
                 if (_cache.TryGetValue(path, out var data))
@@ -46,7 +45,6 @@ namespace webii
                 _lastModified[path] = File.GetLastWriteTimeUtc(path);
                 _lastAccessed[path] = DateTime.UtcNow;
                 _currentCacheBytes += bytesLength;
-                Console.WriteLine($"[CACHE] GetBytes from file: {path} ({bytesLength} bytes), current cache size: {_currentCacheBytes} bytes");
                 SetupWatcher(path);
                 return bytes;
             }
@@ -58,7 +56,6 @@ namespace webii
             {
                 if (_lastModified.TryGetValue(path, out var lastMod))
                 {
-                    Console.WriteLine($"[CACHE] GetLastModified from cache: {path} = {lastMod:R}");
                     return lastMod;
                 }
 
@@ -66,11 +63,9 @@ namespace webii
                 {
                     var lastModified = File.GetLastWriteTimeUtc(path);
                     _lastModified[path] = lastModified;
-                    Console.WriteLine($"[CACHE] GetLastModified from file: {path} = {lastModified:R}");
                     return lastModified;
                 }
 
-                Console.WriteLine($"[CACHE] GetLastModified file not found: {path}");
                 return null;
             }
         }
@@ -146,7 +141,6 @@ namespace webii
                     _watchers.Remove(path);
                 }
 
-                Console.WriteLine($"[CACHE] Cache invalidated for: {path} (had cache: {hadCache}, had lastModified: {hadLastModified})");
             }
         }
 
@@ -156,7 +150,6 @@ namespace webii
             if (_currentCacheBytes + requiredBytes <= _maxCacheBytes || _cache.Count == 0)
                 return;
 
-            Console.WriteLine($"[CACHE] Ensuring cache space for: {requiredBytes} bytes");
 
             while (_currentCacheBytes + requiredBytes > _maxCacheBytes && _cache.Count > 0)
             {
@@ -175,9 +168,6 @@ namespace webii
 
                 if (oldestPath == null)
                     break;
-                Console.BackgroundColor = ConsoleColor.DarkYellow;
-                Console.WriteLine($"[CACHE] Evicting oldest entry: {oldestPath} (accessed: {oldestTime:R})");
-                Console.BackgroundColor = ConsoleColor.Black;
 
                 // Usuń najstarszy element
                 if (_cache.TryGetValue(oldestPath, out var data))
